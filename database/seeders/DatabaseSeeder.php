@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Item;
 use App\Models\Post;
 use App\Models\User;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
@@ -18,7 +19,8 @@ class DatabaseSeeder extends Seeder
 
         User::factory()
             ->count(10) // Create 10 users
-            ->has(Post::factory()->count(5)) // Each user has 5 posts
+            ->has(Post::factory()->count(7))
+            ->has(Item::factory()->count(5)) // Each user has 5 posts
             ->create();
     }
 }

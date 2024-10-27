@@ -47,6 +47,7 @@
                     <option
                         v-if="columnTypes[column] === 'number'"
                         value="equals"
+                        selected
                     >
                         Equals
                     </option>
@@ -71,33 +72,58 @@
                     >
                         Before
                     </option>
+                    <option
+                        v-if="columnTypes[column] === 'date'"
+                        value="between"
+                    >
+                        Between
+                    </option>
                 </select>
 
-                <!-- Input for date filter -->
+                <!-- Input for other filter -->
                 <input
                     v-if="
                         filters[column] &&
-                        (filters[column] === 'after' ||
-                            filters[column] === 'before')
+                        (filters[column] === 'greaterThan' ||
+                            filters[column] === 'lessThan' ||
+                            filters[column] === 'equals')
                     "
-                    :placeholder="getFilterPlaceholder(column)"
+                    type="number"
                     v-model="filterValues[column]"
+                    placeholder="Enter numeric value..."
                     @input="onFilterInputChange(column)"
-                    type="date"
                 />
 
-                <!-- Input for other filters -->
-                <input
-                    v-if="
-                        filters[column] &&
-                        filters[column] !== 'after' &&
-                        filters[column] !== 'before'
-                    "
-                    type="text"
-                    v-model="filterValues[column]"
-                    placeholder="Enter value..."
-                    @input="onFilterInputChange(column)"
-                />
+                <!-- Input for date filters -->
+                <div v-if="filters[column]">
+                    <input
+                        v-if="
+                            filters[column] === 'after' ||
+                            filters[column] === 'before'
+                        "
+                        :placeholder="getFilterPlaceholder(column)"
+                        v-model="filterValues[column]"
+                        @input="onFilterInputChange(column)"
+                        type="date"
+                    />
+
+                    <div v-else-if="filters[column] === 'between'">
+                        <input
+                            :placeholder="
+                                'Start ' + getFilterPlaceholder(column)
+                            "
+                            v-model="filterValues[column].start"
+                            @input="onFilterInputChange(column)"
+                            type="date"
+                        />
+                        <input
+                            :placeholder="'End ' + getFilterPlaceholder(column)"
+                            v-model="filterValues[column].end"
+                            @input="onFilterInputChange(column)"
+                            type="date"
+                        />
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -115,10 +141,10 @@
                 </tr>
             </thead>
             <tbody>
-                <tr v-if="filteredData.length === 0">
+                <tr v-if="data.data.data.length === 0">
                     <td colspan="4">No data available</td>
                 </tr>
-                <tr v-for="(item, index) in filteredData" :key="index">
+                <tr v-for="(item, index) in data.data.data" :key="index">
                     <td v-for="(value, column) in item" :key="column">
                         <button
                             v-if="isCountColumn(column)"
@@ -190,22 +216,53 @@ export default {
 
         const fetcher = async (url, table, sort, filters, search, page) => {
             const sortQuery = sort.length ? `&sort=${sort.join(",")}` : "";
+
+            // Build filter query with type and value
             const filterQuery = Object.entries(filters)
-                .filter(([key, value]) => value) // Only include filters that have a value
-                .map(
-                    ([key]) =>
-                        `&${key}=${encodeURIComponent(
-                            filterValues.value[key] || ""
-                        )}`
+                .filter(
+                    ([key, type]) =>
+                        type &&
+                        filterValues.value[key] !== "" &&
+                        filterValues.value[key] !== null
                 )
+                .map(([key, type]) => {
+                    if (
+                        type === "between" &&
+                        typeof filterValues.value[key] === "object"
+                    ) {
+                        const { start, end } = filterValues.value[key];
+                        return `&filter[${encodeURIComponent(
+                            key
+                        )}][type]=between&filter[${encodeURIComponent(
+                            key
+                        )}][value][start]=${encodeURIComponent(
+                            start
+                        )}&filter[${encodeURIComponent(
+                            key
+                        )}][value][end]=${encodeURIComponent(end)}`;
+                    } else {
+                        return `&filter[${encodeURIComponent(
+                            key
+                        )}][type]=${encodeURIComponent(
+                            type
+                        )}&filter[${encodeURIComponent(
+                            key
+                        )}][value]=${encodeURIComponent(
+                            filterValues.value[key]
+                        )}`;
+                    }
+                })
                 .join("");
+
             const searchQueryStr = search
                 ? `&search=${encodeURIComponent(search)}`
                 : "";
 
-            const response = await fetch(
-                `${url}?table=${table}&page=${page}${sortQuery}${filterQuery}${searchQueryStr}`
-            );
+            const finalUrl = `${url}?table=${table}&page=${page}${sortQuery}${filterQuery}${searchQueryStr}`;
+
+            console.log("Fetching data with URL:", finalUrl); // Debugging line
+
+            const response = await fetch(finalUrl);
             return response.json();
         };
 
@@ -237,73 +294,88 @@ export default {
         const isCountColumn = (column) => column.includes("_count"); // Adjust as per your column naming convention
 
         const onCountColumnClick = async (item, column, tableList) => {
-            const relatedTableBase = column.replace("_count", "");
+            // Define the related table based on the clicked column
+            const relatedTableBase = column.replace("_count", ""); // e.g., "user" for "user_count"
             let relatedTable = relatedTableBase;
+            let previousTable = selectedTable.value.slice(0, -1);
 
-            // Convert tableList from an object to an array of keys
-            const tableNames = Object.values(tableList); // Use Object.values(tableList) if you want values instead of keys
+            // Get the list of table names
+            const tableNames = Object.values(tableList);
 
-            // Function to find the closest matching table name
+            // Find the closest matching table name
             const findClosestTableName = (baseName, tableNames) => {
-                if (!Array.isArray(tableNames)) {
-                    console.error(
-                        "Expected tableNames to be an array, but got:",
-                        tableNames
-                    );
-                    return ""; // Return an empty string or handle as needed
-                }
-
                 let closestMatch = "";
                 let highestScore = 0;
 
-                for (let table of tableNames) {
-                    // Compare with a basic similarity check
+                for (const table of tableNames) {
                     const score = getSimilarityScore(baseName, table);
                     if (score > highestScore) {
                         highestScore = score;
                         closestMatch = table;
                     }
                 }
-
                 return closestMatch;
             };
 
-            // Basic similarity scoring function
             const getSimilarityScore = (a, b) => {
-                const lengthA = a.length;
-                const lengthB = b.length;
-                const minLength = Math.min(lengthA, lengthB);
+                const minLength = Math.min(a.length, b.length);
                 const matches = [...a].reduce((count, char, index) => {
                     return count + (b[index] === char ? 1 : 0);
                 }, 0);
-                return matches / minLength; // Normalize by the length of the shorter string
+                const score = matches / minLength;
+                return score;
             };
 
-            // Find the closest matching table name
+            // Find the related table based on the clicked column
             relatedTable = findClosestTableName(relatedTableBase, tableNames);
 
-            // Ensure relatedTable is valid
             if (!relatedTable) {
-                console.error("No matching table found for:", relatedTableBase);
-                return; // Handle the error as needed
+                return;
             }
-
-            const foreignKey = `${relatedTable}_id`; // Use the matched table name
 
             selectedTable.value = relatedTable;
 
-            // Apply filter based on foreign key
-            filters.value = { [foreignKey]: item.id };
-            filterValues.value = { [foreignKey]: item.id };
+            // Trigger a refetch to get fresh data
+            await refetch();
 
-            await refetch(); // Refetch data for the new table with the filter
+            // Dynamically determine the foreign key based on the related table
+            const foreignKeyField = `${previousTable}_id`; // Ensures the foreign key is named as "{relatedTableBase}_id" with singular noun
+
+            // Determine if we're in a one-to-one or one-to-many relationship
+            const isOneTable = data.value?.columns.includes(foreignKeyField);
+
+            let filterField, columnToApplyFilters;
+
+            let thisTable = relatedTable.slice(0, -1) + "_id";
+
+            // Determine the relationship type
+            if (isOneTable) {
+                // For one-to-many relationships, set filter fields dynamically
+                filterField = "id"; // Filter by 'id' of the related table
+                columnToApplyFilters = foreignKeyField; // Apply filters to the foreign key
+                filterValues.value = {
+                    [columnToApplyFilters]: item.id.toString(), // Pass the ID from the many table
+                };
+            } else {
+                filterField = foreignKeyField;
+                columnToApplyFilters = "id";
+                filterValues.value = {
+                    [columnToApplyFilters]: item[thisTable].toString(),
+                };
+            }
+
+            // Set the filter parameters
+            columnTypes.value[filterField] = "number"; // Define the type of the filter
+            filters.value = { [columnToApplyFilters]: "equals" }; // Apply filters to the correct column
+
+            // Reset to the first page after applying a new filter
+            currentPage.value = 1;
+            await refetch();
         };
 
         const isDateString = (str) => {
-            // Regular expression to match ISO 8601 date format
-            const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
-            const shortDatePattern = /^\d{4}-\d{2}-\d{2}$/; // Matches YYYY-MM-DD
-            return isoDatePattern.test(str) || shortDatePattern.test(str);
+            const date = new Date(str);
+            return !isNaN(date.getTime());
         };
 
         watch(data, (newData) => {
@@ -317,15 +389,15 @@ export default {
                 columnTypes.value = {}; // Reset column types
 
                 newData["columns"].forEach((column) => {
-                    if (typeof firstItem[column] === "string") {
-                        columnTypes.value[column] = "string";
-                    } else if (typeof firstItem[column] === "number") {
-                        columnTypes.value[column] = "number";
-                    } else if (
+                    if (
                         typeof firstItem[column] === "string" &&
                         isDateString(firstItem[column])
                     ) {
                         columnTypes.value[column] = "date";
+                    } else if (typeof firstItem[column] === "string") {
+                        columnTypes.value[column] = "string";
+                    } else if (typeof firstItem[column] === "number") {
+                        columnTypes.value[column] = "number";
                     }
                 });
             } else {
@@ -333,63 +405,6 @@ export default {
             }
         });
 
-        const filteredData = computed(() => {
-            if (!data.value || !data.value.columns || !data.value["data"].data)
-                return [];
-
-            const searchLower = searchQuery.value.toLowerCase();
-
-            return data.value["data"].data.filter((item) => {
-                const matchesSearch = Object.values(item).some((value) =>
-                    String(value).toLowerCase().includes(searchLower)
-                );
-
-                const matchesFilters = Object.keys(filters.value).every(
-                    (column) => {
-                        const filterValue = filterValues.value[column];
-                        if (!filterValue) return true; // No filter applied for this column
-                        const columnType = columnTypes.value[column];
-
-                        switch (filters.value[column]) {
-                            case "contains":
-                                return String(item[column])
-                                    .toLowerCase()
-                                    .includes(filterValue.toLowerCase());
-                            case "equals":
-                                return String(item[column]) === filterValue;
-                            case "greaterThan":
-                                return (
-                                    typeof item[column] === "number" && // Ensure the type is number
-                                    Number(item[column]) > Number(filterValue)
-                                );
-                            case "lessThan":
-                                return (
-                                    typeof item[column] === "number" && // Ensure the type is number
-                                    Number(item[column]) < Number(filterValue)
-                                );
-                            case "after":
-                                // Compare dates
-                                return (
-                                    isDateString(item[column]) &&
-                                    new Date(item[column]) >
-                                        new Date(filterValue)
-                                );
-                            case "before":
-                                // Compare dates
-                                return (
-                                    isDateString(item[column]) &&
-                                    new Date(item[column]) <
-                                        new Date(filterValue)
-                                );
-                            default:
-                                return true;
-                        }
-                    }
-                );
-
-                return matchesSearch && matchesFilters;
-            });
-        });
 
         const getFilterPlaceholder = (column) => {
             return columnTypes.value[column] === "date"
@@ -404,7 +419,7 @@ export default {
             sort.value = []; // Reset sorting
             searchQuery.value = ""; // Clear search query
             columnTypes.value = {}; // Clear column types so it gets recalculated
-            await refetch(); // This will trigger the reactivity for filteredData automatically
+            await refetch(); // This will trigger the reactivity for data automatically
         };
 
         const toggleSort = async (column) => {
@@ -423,16 +438,22 @@ export default {
         };
 
         const onSearch = () => {
+            currentPage.value = 1; // Reset to first page on search
             refetch(); // Trigger a refetch on search change
         };
 
         const onFilterChange = (column) => {
-            // Reset filter value when filter type changes
-            filterValues.value[column] = "";
+            if (filters.value[column] === "between") {
+                filterValues.value[column] = { start: "", end: "" };
+            } else {
+                filterValues.value[column] = "";
+            }
+            currentPage.value = 1; // Reset to first page
             refetch(); // Trigger a refetch on filter change
         };
 
         const onFilterInputChange = (column) => {
+            currentPage.value = 1; // Reset to first page
             refetch(); // Trigger a refetch on filter input change
         };
 
@@ -445,7 +466,6 @@ export default {
             data,
             error,
             searchQuery,
-            filteredData,
             filters,
             filterValues,
             columnTypes,
