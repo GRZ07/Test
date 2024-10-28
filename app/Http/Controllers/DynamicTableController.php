@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 use Illuminate\Support\Facades\Log;
 use ReflectionClass;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class DynamicTableController extends Controller
 {
@@ -91,7 +93,7 @@ class DynamicTableController extends Controller
 
             // Build the query without allowedFilters
             $query = QueryBuilder::for($modelClass)
-                ->allowedSorts($columns); // Removed allowedFilters
+                ->allowedSorts($columns);
 
             if (!empty($relationships)) {
                 $query->withCount($relationships); // Eager load the relationships
@@ -99,11 +101,18 @@ class DynamicTableController extends Controller
 
             // Apply search filter if provided
             if ($search = $request->input('search')) {
-                $query->where(function ($query) use ($search, $columns) {
-                    foreach ($columns as $column) {
-                        $query->orWhere($column, 'like', '%' . $search . '%');
-                    }
+                // Only apply search to string and date columns
+                $searchableColumns = array_filter($columns, function ($column) use ($columnTypes) {
+                    return in_array($columnTypes[$column], ['string', 'date']);
                 });
+
+                if (!empty($searchableColumns)) {
+                    $query->where(function ($query) use ($search, $searchableColumns) {
+                        foreach ($searchableColumns as $column) {
+                            $query->orWhere($column, 'like', '%' . $search . '%');
+                        }
+                    });
+                }
             }
 
             // Apply custom filters if provided
@@ -134,6 +143,8 @@ class DynamicTableController extends Controller
         }
     }
 
+    // Inside DynamicTableController.php
+
     /**
      * Apply filters to the query based on filter type and value.
      */
@@ -143,18 +154,35 @@ class DynamicTableController extends Controller
             $filterValue = json_encode($filter['value']); // For logging
             Log::info("Applying filter on '{$key}' with type '{$filter['type']}' and value '{$filterValue}'");
 
+            // Determine if the column is a count column
+            $isCountColumn = Str::endsWith($key, '_count');
+
             switch ($filter['type']) {
                 case 'contains':
-                    $query->where($key, 'like', '%' . $filter['value'] . '%');
+                    if (!$isCountColumn) {
+                        $query->where($key, 'like', '%' . $filter['value'] . '%');
+                    }
                     break;
                 case 'equals':
-                    $query->where($key, $filter['value']);
+                    if ($isCountColumn) {
+                        $query->having($key, '=', $filter['value']);
+                    } else {
+                        $query->where($key, '=', $filter['value']);
+                    }
                     break;
                 case 'greaterThan':
-                    $query->where($key, '>', $filter['value']);
+                    if ($isCountColumn) {
+                        $query->having($key, '>', $filter['value']);
+                    } else {
+                        $query->where($key, '>', $filter['value']);
+                    }
                     break;
                 case 'lessThan':
-                    $query->where($key, '<', $filter['value']);
+                    if ($isCountColumn) {
+                        $query->having($key, '<', $filter['value']);
+                    } else {
+                        $query->where($key, '<', $filter['value']);
+                    }
                     break;
                 case 'after':
                     $query->whereDate($key, '>', $filter['value']);
@@ -170,7 +198,12 @@ class DynamicTableController extends Controller
                         // Validate date formats
                         if ($this->isValidDate($start) && $this->isValidDate($end)) {
                             if (strtotime($start) <= strtotime($end)) {
-                                $query->whereBetween($key, [$start, $end]);
+                                if ($isCountColumn) {
+                                    // Using havingRaw for 'between' on count columns
+                                    $query->havingRaw("{$key} BETWEEN ? AND ?", [$start, $end]);
+                                } else {
+                                    $query->whereBetween($key, [$start, $end]);
+                                }
                             } else {
                                 Log::warning("'between' filter start date is after end date for column '{$key}'");
                             }
@@ -191,7 +224,11 @@ class DynamicTableController extends Controller
     }
 
     /**
-     * Validate if a string is a valid date in 'Y-m-d' format.
+     * Validate date format.
+     *
+     * @param string $date
+     * @param string $format
+     * @return bool
      */
     protected function isValidDate($date, $format = 'Y-m-d')
     {
@@ -243,7 +280,7 @@ class DynamicTableController extends Controller
                 try {
                     $returnType = $method->getReturnType();
 
-                    Log::info('Method: ' . $method->getName() . ' has return type: ' . $returnType);
+                    
 
                     if ($returnType) {
                         $returnTypeName = $returnType->getName();

@@ -37,7 +37,7 @@
                     :id="'filter-' + column"
                     @change="onFilterChange(column)"
                 >
-                    <option value="">Select Filter</option>
+                    <option value="" selected>Select Filter</option>
                     <option
                         v-if="columnTypes[column] === 'string'"
                         value="contains"
@@ -47,7 +47,6 @@
                     <option
                         v-if="columnTypes[column] === 'number'"
                         value="equals"
-                        selected
                     >
                         Equals
                     </option>
@@ -79,7 +78,13 @@
                         Between
                     </option>
                 </select>
-
+                <input
+                    v-if="filters[column] && filters[column] === 'contains'"
+                    type="string"
+                    v-model="filterValues[column]"
+                    placeholder="Enter value..."
+                    @input="onFilterInputChange(column)"
+                />
                 <!-- Input for other filter -->
                 <input
                     v-if="
@@ -137,12 +142,16 @@
                         @click="toggleSort(value)"
                     >
                         {{ value }}
+                        <span v-if="sort.column === value">
+                            <span v-if="sort.direction === 'asc'">▲</span>
+                            <span v-else>▼</span>
+                        </span>
                     </th>
                 </tr>
             </thead>
             <tbody>
                 <tr v-if="data.data.data.length === 0">
-                    <td colspan="4">No data available</td>
+                    <td :colspan="data.columns.length">No data available</td>
                 </tr>
                 <tr v-for="(item, index) in data.data.data" :key="index">
                     <td v-for="(value, column) in item" :key="column">
@@ -180,24 +189,38 @@
 
 <script>
 import { useQuery } from "@tanstack/vue-query";
-import { computed, onMounted, ref, watch } from "vue";
+import { ref, onMounted, watch } from "vue";
+import { debounce } from "lodash";
+
 export default {
     setup() {
         const selectedTable = ref("users");
         const currentPage = ref(1);
         const tableList = ref([]);
-        const sort = ref([]);
+        const sort = ref({
+            column: null,
+            direction: "asc", // 'asc' or 'desc'
+        });
         const filters = ref({});
         const filterValues = ref({});
         const columnTypes = ref({});
         const searchQuery = ref("");
+
+        const debouncedOnSearch = debounce(() => {
+            currentPage.value = 1; // Reset to first page on search
+            refetch(); // Trigger a refetch on search change
+        }, 300); // Adjust the delay as needed
+
+        const onSearch = () => {
+            debouncedOnSearch();
+        };
 
         const fetchTableNames = async () => {
             isLoading.value = true;
             try {
                 const response = await fetch("/table-names");
                 const result = await response.json();
-                tableList.value = result;
+                tableList.value = Object.values(result); // Ensure it's an array
 
                 // Set default to "users" if available, otherwise to the first table in the list
                 selectedTable.value = result.includes("users")
@@ -215,7 +238,13 @@ export default {
         });
 
         const fetcher = async (url, table, sort, filters, search, page) => {
-            const sortQuery = sort.length ? `&sort=${sort.join(",")}` : "";
+            let sortQuery = "";
+            if (sort.column) {
+                sortQuery =
+                    sort.direction === "desc"
+                        ? `&sort=-${sort.column}`
+                        : `&sort=${sort.column}`;
+            }
 
             // Build filter query with type and value
             const filterQuery = Object.entries(filters)
@@ -271,7 +300,8 @@ export default {
                 queryKey: [
                     "dynamicTable",
                     selectedTable.value,
-                    sort.value,
+                    sort.value.column,
+                    sort.value.direction,
                     filters.value,
                     searchQuery.value,
                     currentPage.value,
@@ -294,10 +324,20 @@ export default {
         const isCountColumn = (column) => column.includes("_count"); // Adjust as per your column naming convention
 
         const onCountColumnClick = async (item, column, tableList) => {
-            // Define the related table based on the clicked column
-            const relatedTableBase = column.replace("_count", ""); // e.g., "user" for "user_count"
+            filters.value = {};
+            filterValues.value = {};
+            columnTypes.value = {};
+
+            // Determine the relationship type from relationshipDetails
+            const relationshipType = data.value.relationshipDetails
+                ? data.value.relationshipDetails[column]
+                : null;
+
+            // Extract the base name by removing '_count'
+            const relatedTableBase = column.replace("_count", "");
+
             let relatedTable = relatedTableBase;
-            let previousTable = selectedTable.value.slice(0, -1);
+            let previousTable = selectedTable.value.slice(0, -1); // Assuming plural to singular
 
             // Get the list of table names
             const tableNames = Object.values(tableList);
@@ -341,27 +381,80 @@ export default {
             // Dynamically determine the foreign key based on the related table
             const foreignKeyField = `${previousTable}_id`; // Ensures the foreign key is named as "{relatedTableBase}_id" with singular noun
 
-            // Determine if we're in a one-to-one or one-to-many relationship
-            const isOneTable = data.value?.columns.includes(foreignKeyField);
-
             let filterField, columnToApplyFilters;
 
             let thisTable = relatedTable.slice(0, -1) + "_id";
 
-            // Determine the relationship type
-            if (isOneTable) {
-                // For one-to-many relationships, set filter fields dynamically
-                filterField = "id"; // Filter by 'id' of the related table
-                columnToApplyFilters = foreignKeyField; // Apply filters to the foreign key
+            console.log(
+                "out thisColumn",
+                columnToApplyFilters,
+                "foreignKeyField",
+                foreignKeyField,
+                "thisTable",
+                thisTable
+            );
+
+            if (relationshipType === "many-to-many") {
+                // Handle many-to-many relationship
+                // Assume pivot table is named alphabetically or follow a naming convention
+                // Example: for users and roles, pivot table is role_user
+
+                // Find the pivot table
+                const pivotTable = tableNames.find(
+                    (tbl) =>
+                        tbl === `${relatedTableBase}_pivot` ||
+                        tbl === `${relatedTableBase}_${previousTable}` ||
+                        tbl === `${previousTable}_${relatedTableBase}`
+                );
+
+                if (!pivotTable) {
+                    console.warn(`Pivot table for relationship not found.`);
+                    return;
+                }
+
+                // Determine the foreign key in the pivot table
+                const relatedForeignKey = `${previousTable}_id`;
+                const pivotForeignKey = `${relatedTableBase}_id`;
+
+                // Apply filters based on pivot table
+                filterField = pivotForeignKey;
+                columnToApplyFilters = filterField;
+
                 filterValues.value = {
-                    [columnToApplyFilters]: item.id.toString(), // Pass the ID from the many table
+                    [columnToApplyFilters]: item.id.toString(), // Pass the ID from the current table
                 };
             } else {
-                filterField = foreignKeyField;
-                columnToApplyFilters = "id";
-                filterValues.value = {
-                    [columnToApplyFilters]: item[thisTable].toString(),
-                };
+                // Handle one-to-one and one-to-many relationships
+                const isOneTable =
+                    data.value?.columns.includes(foreignKeyField);
+
+                if (isOneTable) {
+                    filterField = "id"; // Filter by 'id' of the related table
+                    columnToApplyFilters = foreignKeyField; // Apply filters to the foreign key
+                    console.log(
+                        "1:1 thisColumn",
+                        columnToApplyFilters,
+                        "foreignKeyField",
+                        foreignKeyField
+                    );
+                    filterValues.value = {
+                        [columnToApplyFilters]: item.id.toString(), // Pass the ID from the many table
+                    };
+                } else {
+                    filterField = foreignKeyField;
+                    columnToApplyFilters = "id";
+                    console.log(
+                        "else thisColumn",
+                        columnToApplyFilters,
+                        "foreignKeyField",
+                        foreignKeyField,
+                        "thisTable",
+                        thisTable
+                    );
+                    filterValues.value = {
+                        [columnToApplyFilters]: item[thisTable].toString(),
+                    };
+                }
             }
 
             // Set the filter parameters
@@ -373,38 +466,19 @@ export default {
             await refetch();
         };
 
-        const isDateString = (str) => {
-            const date = new Date(str);
-            return !isNaN(date.getTime());
-        };
-
         watch(data, (newData) => {
             if (
                 newData &&
                 newData.data &&
-                Array.isArray(newData.columns) &&
-                newData["data"].data.length > 0
+                newData.columns &&
+                newData.columnTypes &&
+                Array.isArray(newData.columns)
             ) {
-                const firstItem = newData["data"].data[0];
-                columnTypes.value = {}; // Reset column types
-
-                newData["columns"].forEach((column) => {
-                    if (
-                        typeof firstItem[column] === "string" &&
-                        isDateString(firstItem[column])
-                    ) {
-                        columnTypes.value[column] = "date";
-                    } else if (typeof firstItem[column] === "string") {
-                        columnTypes.value[column] = "string";
-                    } else if (typeof firstItem[column] === "number") {
-                        columnTypes.value[column] = "number";
-                    }
-                });
+                columnTypes.value = newData.columnTypes; // Assign column types from backend response
             } else {
-                columnTypes.value = {}; // Clear the column types if the table is empty
+                columnTypes.value = {}; // Clear the column types if the table is empty or data is incomplete
             }
         });
-
 
         const getFilterPlaceholder = (column) => {
             return columnTypes.value[column] === "date"
@@ -416,30 +490,36 @@ export default {
             currentPage.value = 1; // Reset to the first page
             filters.value = {}; // Reset filters
             filterValues.value = {}; // Reset filter values
-            sort.value = []; // Reset sorting
+            sort.value = {
+                column: null,
+                direction: "asc",
+            }; // Reset sorting
             searchQuery.value = ""; // Clear search query
             columnTypes.value = {}; // Clear column types so it gets recalculated
             await refetch(); // This will trigger the reactivity for data automatically
         };
 
         const toggleSort = async (column) => {
-            if (sort.value[0] === column) {
-                sort.value = []; // Remove sort if already sorted
+            if (sort.value.column === column) {
+                // Toggle direction
+                sort.value.direction =
+                    sort.value.direction === "asc" ? "desc" : "asc";
             } else {
-                sort.value = [column]; // Sort by this column
+                // Set new sort column and default to ascending
+                sort.value.column = column;
+                sort.value.direction = "asc";
             }
+
             await refetch(); // Fetch again after sorting
         };
 
         const goToPage = (url) => {
             // Implement pagination logic
-            currentPage.value = new URL(url).searchParams.get("page");
-            refetch(); // Refetch data for the new page
-        };
-
-        const onSearch = () => {
-            currentPage.value = 1; // Reset to first page on search
-            refetch(); // Trigger a refetch on search change
+            const page = new URL(url).searchParams.get("page");
+            if (page) {
+                currentPage.value = parseInt(page);
+                refetch(); // Refetch data for the new page
+            }
         };
 
         const onFilterChange = (column) => {
@@ -461,7 +541,7 @@ export default {
             selectedTable,
             tableList,
             isLoading,
-            isError: error,
+            isError,
             isFetching,
             data,
             error,
@@ -478,6 +558,7 @@ export default {
             getFilterPlaceholder,
             isCountColumn,
             onCountColumnClick,
+            sort,
         };
     },
 };
