@@ -21,6 +21,8 @@
     "dependencies": {
         "@tanstack/vue-query": "^5.59.13",
         "lodash": "^4.17.21",
+        "pinia": "^2.2.4",
+        "pluralize": "^8.0.0",
         "uuid": "^11.0.1",
         "vue-api-query": "^1.11.0"
     }

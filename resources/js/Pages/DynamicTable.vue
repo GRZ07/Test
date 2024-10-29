@@ -24,110 +24,141 @@
             />
         </div>
 
-        <!-- Column Filters -->
-        <div v-if="data && data.data && !isError" class="filters">
-            <div
-                v-for="(column, index) in data.columns"
-                :key="index"
-                class="filter"
-            >
-                <label :for="'filter-' + column">{{ column }}</label>
-                <select
-                    v-model="filters[column]"
-                    :id="'filter-' + column"
-                    @change="onFilterChange(column)"
-                >
-                    <option value="" selected>Select Filter</option>
-                    <option
-                        v-if="columnTypes[column] === 'string'"
-                        value="contains"
-                    >
-                        Contains
-                    </option>
-                    <option
-                        v-if="columnTypes[column] === 'number'"
-                        value="equals"
-                    >
-                        Equals
-                    </option>
-                    <option
-                        v-if="columnTypes[column] === 'number'"
-                        value="greaterThan"
-                    >
-                        Greater than
-                    </option>
-                    <option
-                        v-if="columnTypes[column] === 'number'"
-                        value="lessThan"
-                    >
-                        Less than
-                    </option>
-                    <option v-if="columnTypes[column] === 'date'" value="after">
-                        After
-                    </option>
-                    <option
-                        v-if="columnTypes[column] === 'date'"
-                        value="before"
-                    >
-                        Before
-                    </option>
-                    <option
-                        v-if="columnTypes[column] === 'date'"
-                        value="between"
-                    >
-                        Between
-                    </option>
-                </select>
-                <input
-                    v-if="filters[column] && filters[column] === 'contains'"
-                    type="string"
-                    v-model="filterValues[column]"
-                    placeholder="Enter value..."
-                    @input="onFilterInputChange(column)"
-                />
-                <!-- Input for other filter -->
-                <input
-                    v-if="
-                        filters[column] &&
-                        (filters[column] === 'greaterThan' ||
-                            filters[column] === 'lessThan' ||
-                            filters[column] === 'equals')
-                    "
-                    type="number"
-                    v-model="filterValues[column]"
-                    placeholder="Enter numeric value..."
-                    @input="onFilterInputChange(column)"
-                />
+        <!-- Filters Button -->
+        <div
+            v-if="data && data.data && !isError"
+            class="filters-button-container"
+        >
+            <button @click="showFilters = true">Filters</button>
+        </div>
 
-                <!-- Input for date filters -->
-                <div v-if="filters[column]">
-                    <input
-                        v-if="
-                            filters[column] === 'after' ||
-                            filters[column] === 'before'
-                        "
-                        :placeholder="getFilterPlaceholder(column)"
-                        v-model="filterValues[column]"
-                        @input="onFilterInputChange(column)"
-                        type="date"
-                    />
+        <!-- Filters Modal -->
+        <div
+            v-if="showFilters"
+            class="modal-overlay"
+            @click.self="closeFilters"
+        >
+            <div class="modal">
+                <h2>Apply Filters</h2>
+                <div class="filters">
+                    <div
+                        v-for="(column, index) in data.columns"
+                        :key="index"
+                        class="filter"
+                    >
+                        <label :for="'filter-' + column">{{ column }}</label>
+                        <select
+                            v-model="tempFilters[column]"
+                            :id="'filter-' + column"
+                            @change="onTempFilterChange(column)"
+                        >
+                            <option value="" selected>Select Filter</option>
+                            <option
+                                v-if="columnTypes[column] === 'string'"
+                                value="contains"
+                            >
+                                Contains
+                            </option>
+                            <option
+                                v-if="columnTypes[column] === 'number'"
+                                value="equals"
+                            >
+                                Equals
+                            </option>
+                            <option
+                                v-if="columnTypes[column] === 'number'"
+                                value="greaterThan"
+                            >
+                                Greater than
+                            </option>
+                            <option
+                                v-if="columnTypes[column] === 'number'"
+                                value="lessThan"
+                            >
+                                Less than
+                            </option>
+                            <option
+                                v-if="columnTypes[column] === 'date'"
+                                value="after"
+                            >
+                                After
+                            </option>
+                            <option
+                                v-if="columnTypes[column] === 'date'"
+                                value="before"
+                            >
+                                Before
+                            </option>
+                            <option
+                                v-if="columnTypes[column] === 'date'"
+                                value="between"
+                            >
+                                Between
+                            </option>
+                            <!-- Add 'between' option for number columns -->
+                            <option
+                                v-if="columnTypes[column] === 'number'"
+                                value="between"
+                            >
+                                Between
+                            </option>
+                        </select>
 
-                    <div v-else-if="filters[column] === 'between'">
+                        <!-- Input for 'contains' -->
                         <input
-                            :placeholder="
-                                'Start ' + getFilterPlaceholder(column)
+                            v-if="tempFilters[column] === 'contains'"
+                            type="text"
+                            v-model="tempFilterValues[column]"
+                            placeholder="Enter value..."
+                        />
+
+                        <!-- Input for numerical filters -->
+                        <input
+                            v-if="
+                                tempFilters[column] &&
+                                (tempFilters[column] === 'greaterThan' ||
+                                    tempFilters[column] === 'lessThan' ||
+                                    tempFilters[column] === 'equals')
                             "
-                            v-model="filterValues[column].start"
-                            @input="onFilterInputChange(column)"
-                            type="date"
+                            type="number"
+                            v-model="tempFilterValues[column]"
+                            placeholder="Enter numeric value..."
                         />
-                        <input
-                            :placeholder="'End ' + getFilterPlaceholder(column)"
-                            v-model="filterValues[column].end"
-                            @input="onFilterInputChange(column)"
-                            type="date"
-                        />
+
+                        <!-- Input for date and number 'between' filters -->
+                        <div v-if="tempFilters[column] === 'between'">
+                            <input
+                                :placeholder="
+                                    getFilterPlaceholder(column, 'start')
+                                "
+                                v-model="tempFilterValues[column].start"
+                                @input="onTempFilterInputChange(column)"
+                                :type="
+                                    columnTypes[column] === 'date'
+                                        ? 'date'
+                                        : 'number'
+                                "
+                            />
+                            <input
+                                :placeholder="
+                                    getFilterPlaceholder(column, 'end')
+                                "
+                                v-model="tempFilterValues[column].end"
+                                @input="onTempFilterInputChange(column)"
+                                :type="
+                                    columnTypes[column] === 'date'
+                                        ? 'date'
+                                        : 'number'
+                                "
+                            />
+                        </div>
                     </div>
+                </div>
+                <!-- Apply and Reset Filter Buttons -->
+                <div class="filter-buttons">
+                    <button @click="applyFilters">Apply Filters</button>
+                    <button @click="resetFilters">Reset Filters</button>
+                    <button @click="closeFilters">Close</button>
                 </div>
             </div>
         </div>
@@ -157,7 +188,9 @@
                     <td v-for="(value, column) in item" :key="column">
                         <button
                             v-if="isCountColumn(column)"
-                            @click="onCountColumnClick(item, column, tableList)"
+                            @click="
+                                handleRelationshipClick(item, column, tableList)
+                            "
                         >
                             {{ value }}
                         </button>
@@ -183,14 +216,17 @@
             >
                 Next
             </button>
+            {{ data["relationshipDetails"]["roles"] }}
         </div>
     </div>
 </template>
 
 <script>
 import { useQuery } from "@tanstack/vue-query";
+import pluralize from "pluralize";
 import { ref, onMounted, watch } from "vue";
 import { debounce } from "lodash";
+import { pull } from "lodash";
 
 export default {
     setup() {
@@ -205,6 +241,17 @@ export default {
         const filterValues = ref({});
         const columnTypes = ref({});
         const searchQuery = ref("");
+
+        // Temporary filters for the filter form
+        const tempFilters = ref({});
+        const tempFilterValues = ref({});
+
+        // Relationship details
+        const relationshipDetails = ref({});
+        const relatedToParams = ref(null); // Add this line
+
+        // Modal visibility
+        const showFilters = ref(false);
 
         const debouncedOnSearch = debounce(() => {
             currentPage.value = 1; // Reset to first page on search
@@ -223,9 +270,9 @@ export default {
                 tableList.value = Object.values(result); // Ensure it's an array
 
                 // Set default to "users" if available, otherwise to the first table in the list
-                selectedTable.value = result.includes("users")
+                selectedTable.value = tableList.value.includes("users")
                     ? "users"
-                    : result[0] || "";
+                    : tableList.value[0] || "";
             } catch (err) {
                 error.value = err;
             } finally {
@@ -237,13 +284,21 @@ export default {
             fetchTableNames(); // Fetch table names when the component is mounted
         });
 
-        const fetcher = async (url, table, sort, filters, search, page) => {
+        const fetcher = async (
+            url,
+            table,
+            sort,
+            filters,
+            search,
+            page,
+            relatedTo
+        ) => {
             let sortQuery = "";
             if (sort.column) {
                 sortQuery =
                     sort.direction === "desc"
-                        ? `&sort=-${sort.column}`
-                        : `&sort=${sort.column}`;
+                        ? `&sort=-${encodeURIComponent(sort.column)}`
+                        : `&sort=${encodeURIComponent(sort.column)}`;
             }
 
             // Build filter query with type and value
@@ -252,7 +307,11 @@ export default {
                     ([key, type]) =>
                         type &&
                         filterValues.value[key] !== "" &&
-                        filterValues.value[key] !== null
+                        filterValues.value[key] !== null &&
+                        ((type === "between" &&
+                            filterValues.value[key].start &&
+                            filterValues.value[key].end) ||
+                            type !== "between")
                 )
                 .map(([key, type]) => {
                     if (
@@ -287,11 +346,27 @@ export default {
                 ? `&search=${encodeURIComponent(search)}`
                 : "";
 
-            const finalUrl = `${url}?table=${table}&page=${page}${sortQuery}${filterQuery}${searchQueryStr}`;
+            let relatedToQuery = "";
+            if (relatedTo) {
+                relatedToQuery = `&relatedTo[relationship]=${encodeURIComponent(
+                    relatedTo.relationship
+                )}&relatedTo[id]=${encodeURIComponent(
+                    relatedTo.id
+                )}&relatedTo[fromTable]=${encodeURIComponent(
+                    relatedTo.fromTable
+                )}`;
+            }
+
+            const finalUrl = `${url}?table=${encodeURIComponent(
+                table
+            )}&page=${page}${sortQuery}${filterQuery}${searchQueryStr}${relatedToQuery}`;
 
             console.log("Fetching data with URL:", finalUrl); // Debugging line
 
             const response = await fetch(finalUrl);
+            if (!response.ok) {
+                throw new Error(`Error fetching data: ${response.statusText}`);
+            }
             return response.json();
         };
 
@@ -302,9 +377,10 @@ export default {
                     selectedTable.value,
                     sort.value.column,
                     sort.value.direction,
-                    filters.value,
+                    JSON.stringify(filters.value),
                     searchQuery.value,
                     currentPage.value,
+                    JSON.stringify(relatedToParams.value),
                 ],
                 queryFn: async () => {
                     const result = await fetcher(
@@ -313,7 +389,8 @@ export default {
                         sort.value,
                         filters.value,
                         searchQuery.value,
-                        currentPage.value
+                        currentPage.value,
+                        relatedToParams.value // Pass relatedToParams.value here
                     );
                     return result;
                 },
@@ -323,20 +400,18 @@ export default {
 
         const isCountColumn = (column) => column.includes("_count"); // Adjust as per your column naming convention
 
-        const onCountColumnClick = async (item, column, tableList) => {
+        const onRelationshipClick = async (item, column, tableList) => {
+            // This function replaces 'onCountColumnClick' and is related to relationships
             filters.value = {};
             filterValues.value = {};
             columnTypes.value = {};
 
             // Determine the relationship type from relationshipDetails
-            const relationshipType = data.value.relationshipDetails
-                ? data.value.relationshipDetails[column]
-                : null;
 
             // Extract the base name by removing '_count'
             const relatedTableBase = column.replace("_count", "");
 
-            let relatedTable = relatedTableBase;
+            let relatedTable = pluralize(relatedTableBase);
             let previousTable = selectedTable.value.slice(0, -1); // Assuming plural to singular
 
             // Get the list of table names
@@ -394,67 +469,39 @@ export default {
                 thisTable
             );
 
-            if (relationshipType === "many-to-many") {
-                // Handle many-to-many relationship
-                // Assume pivot table is named alphabetically or follow a naming convention
-                // Example: for users and roles, pivot table is role_user
+            // Handle one-to-one and one-to-many relationships
+            const isOneTable = data.value?.columns.includes(foreignKeyField);
 
-                // Find the pivot table
-                const pivotTable = tableNames.find(
-                    (tbl) =>
-                        tbl === `${relatedTableBase}_pivot` ||
-                        tbl === `${relatedTableBase}_${previousTable}` ||
-                        tbl === `${previousTable}_${relatedTableBase}`
+            if (isOneTable) {
+                filterField = "id"; // Filter by 'id' of the related table
+                columnToApplyFilters = foreignKeyField; // Apply filters to the foreign key
+                console.log(
+                    "1:1 thisColumn",
+                    columnToApplyFilters,
+                    "foreignKeyField",
+                    foreignKeyField
                 );
-
-                if (!pivotTable) {
-                    console.warn(`Pivot table for relationship not found.`);
-                    return;
-                }
-
-                // Determine the foreign key in the pivot table
-                const relatedForeignKey = `${previousTable}_id`;
-                const pivotForeignKey = `${relatedTableBase}_id`;
-
-                // Apply filters based on pivot table
-                filterField = pivotForeignKey;
-                columnToApplyFilters = filterField;
-
                 filterValues.value = {
-                    [columnToApplyFilters]: item.id.toString(), // Pass the ID from the current table
+                    [columnToApplyFilters]: item.id.toString(), // Pass the ID from the many table
                 };
             } else {
-                // Handle one-to-one and one-to-many relationships
-                const isOneTable =
-                    data.value?.columns.includes(foreignKeyField);
-
-                if (isOneTable) {
-                    filterField = "id"; // Filter by 'id' of the related table
-                    columnToApplyFilters = foreignKeyField; // Apply filters to the foreign key
-                    console.log(
-                        "1:1 thisColumn",
-                        columnToApplyFilters,
-                        "foreignKeyField",
-                        foreignKeyField
-                    );
-                    filterValues.value = {
-                        [columnToApplyFilters]: item.id.toString(), // Pass the ID from the many table
-                    };
-                } else {
-                    filterField = foreignKeyField;
-                    columnToApplyFilters = "id";
-                    console.log(
-                        "else thisColumn",
-                        columnToApplyFilters,
-                        "foreignKeyField",
-                        foreignKeyField,
-                        "thisTable",
-                        thisTable
-                    );
-                    filterValues.value = {
-                        [columnToApplyFilters]: item[thisTable].toString(),
-                    };
-                }
+                filterField = foreignKeyField;
+                columnToApplyFilters = "id";
+                console.log(
+                    "else thisColumn",
+                    columnToApplyFilters,
+                    "foreignKeyField",
+                    foreignKeyField,
+                    "thisTable",
+                    thisTable
+                );
+                // Ensure that item[thisTable] exists
+                const relatedId = item[thisTable];
+                filterValues.value = {
+                    [columnToApplyFilters]: relatedId
+                        ? relatedId.toString()
+                        : "",
+                };
             }
 
             // Set the filter parameters
@@ -472,15 +519,29 @@ export default {
                 newData.data &&
                 newData.columns &&
                 newData.columnTypes &&
+                newData.relationshipDetails &&
                 Array.isArray(newData.columns)
             ) {
                 columnTypes.value = newData.columnTypes; // Assign column types from backend response
+                relationshipDetails.value = newData.relationshipDetails; // Assign relationship types
             } else {
                 columnTypes.value = {}; // Clear the column types if the table is empty or data is incomplete
+                relationshipDetails.value = {}; // Clear relationship details if data is incomplete
             }
+
+            // Synchronize temporary filters with actual filters when data changes externally
+            tempFilters.value = { ...filters.value };
+            tempFilterValues.value = { ...filterValues.value };
         });
 
-        const getFilterPlaceholder = (column) => {
+        const getFilterPlaceholder = (column, part) => {
+            if (tempFilters.value[column] === "between") {
+                if (columnTypes.value[column] === "date") {
+                    return part === "start" ? "Start Date" : "End Date";
+                } else if (columnTypes.value[column] === "number") {
+                    return part === "start" ? "Minimum Value" : "Maximum Value";
+                }
+            }
             return columnTypes.value[column] === "date"
                 ? "Select date"
                 : "Enter value...";
@@ -496,6 +557,13 @@ export default {
             }; // Reset sorting
             searchQuery.value = ""; // Clear search query
             columnTypes.value = {}; // Clear column types so it gets recalculated
+            relationshipDetails.value = {}; // Clear relationship details
+            relatedToParams.value = null; // Reset relatedToParams
+
+            // Also reset temporary filters
+            tempFilters.value = {};
+            tempFilterValues.value = {};
+
             await refetch(); // This will trigger the reactivity for data automatically
         };
 
@@ -515,26 +583,122 @@ export default {
 
         const goToPage = (url) => {
             // Implement pagination logic
-            const page = new URL(url).searchParams.get("page");
+            const page = new URL(url, window.location.origin).searchParams.get(
+                "page"
+            );
             if (page) {
                 currentPage.value = parseInt(page);
                 refetch(); // Refetch data for the new page
             }
         };
 
-        const onFilterChange = (column) => {
-            if (filters.value[column] === "between") {
-                filterValues.value[column] = { start: "", end: "" };
+        // Methods for handling temporary filter changes
+        const onTempFilterChange = (column) => {
+            console.log(
+                `Filter type changed for column: ${column}`,
+                tempFilters.value[column]
+            );
+            if (tempFilters.value[column] === "between") {
+                tempFilterValues.value[column] = { start: "", end: "" };
             } else {
-                filterValues.value[column] = "";
+                tempFilterValues.value[column] = "";
             }
-            currentPage.value = 1; // Reset to first page
-            refetch(); // Trigger a refetch on filter change
+            // No refetch here; filters are applied when "Apply Filters" is clicked
         };
 
-        const onFilterInputChange = (column) => {
+        const onTempFilterInputChange = (column) => {
+            // Ensure that tempFilterValues[column] is an object when 'between' is selected
+            if (
+                tempFilters.value[column] === "between" &&
+                typeof tempFilterValues.value[column] !== "object"
+            ) {
+                tempFilterValues.value[column] = { start: "", end: "" };
+            }
+            console.log(
+                `Filter input changed for column: ${column}`,
+                tempFilterValues.value[column]
+            );
+            // No refetch here; filters are applied when "Apply Filters" is clicked
+        };
+
+        const applyFilters = () => {
+            // Transfer temporary filters to actual filters
+            filters.value = { ...tempFilters.value };
+            filterValues.value = { ...tempFilterValues.value };
             currentPage.value = 1; // Reset to first page
-            refetch(); // Trigger a refetch on filter input change
+            showFilters.value = false; // Close the modal
+            refetch(); // Trigger a refetch with new filters
+        };
+
+        const resetFilters = () => {
+            // Clear both temporary and actual filters
+            tempFilters.value = {};
+            tempFilterValues.value = {};
+            filters.value = {};
+            filterValues.value = {};
+            relationshipDetails.value = {}; // Clear relationship details
+            relatedToParams.value = null; // Reset relatedToParams
+            currentPage.value = 1; // Reset to first page
+            showFilters.value = false; // Close the modal
+            refetch(); // Trigger a refetch with cleared filters
+        };
+
+        const closeFilters = () => {
+            showFilters.value = false;
+        };
+
+        const handleRelationshipClick = (item, column, tableList) => {
+            let columnValue = column.replace("_count", "");
+            columnValue = pluralize(columnValue); // Ensure it's plural
+
+            // Correctly access relationshipDetails using .value
+            const relationshipType = relationshipDetails.value;
+            const relationship = relationshipType[columnValue];
+
+            if (relationship === "many-to-many") {
+                console.log("Many-to-many relationship handled differently");
+                // Implement your logic for many-to-many relationships here
+                handleManyToManyRelationship(item, column, tableList);
+            } else {
+                console.log("Single-to-many: ", relationship);
+                onRelationshipClick(item, column, tableList);
+            }
+        };
+
+        const handleManyToManyRelationship = async (
+            item,
+            column,
+            tableList
+        ) => {
+            // Extract the base name by removing '_count'
+            const relatedTableBase = column.replace("_count", "");
+            const relatedTable = pluralize(relatedTableBase);
+
+            // Store the current table before changing it
+            const fromTable = selectedTable.value;
+
+            // Set the selected table to the related table
+            selectedTable.value = relatedTable;
+
+            // Set up the relatedTo parameter
+            relatedToParams.value = {
+                id: item.id, // The ID of the item in the original table
+                relationship: relatedTableBase, // The name of the relationship in the original model (singular form)
+                fromTable: fromTable, // The original table
+            };
+
+            // Reset filters, sort, and search
+            filters.value = {};
+            filterValues.value = {};
+            sort.value = {
+                column: null,
+                direction: "asc",
+            };
+            searchQuery.value = "";
+            currentPage.value = 1;
+
+            // Refetch data
+            await refetch();
         };
 
         return {
@@ -546,19 +710,27 @@ export default {
             data,
             error,
             searchQuery,
-            filters,
-            filterValues,
+            tempFilters,
+            tempFilterValues,
             columnTypes,
+            sort,
+            relatedToParams,
+            relationshipDetails,
             onTableChange,
             toggleSort,
             goToPage,
             onSearch,
-            onFilterChange,
-            onFilterInputChange,
+            applyFilters,
+            resetFilters,
+            closeFilters,
             getFilterPlaceholder,
-            isCountColumn,
-            onCountColumnClick,
-            sort,
+            isCountColumn: isCountColumn,
+            onRelationshipClick,
+            showFilters,
+            onTempFilterChange,
+            onTempFilterInputChange,
+            handleRelationshipClick,
+            handleManyToManyRelationship,
         };
     },
 };
@@ -582,15 +754,75 @@ th {
     background-color: #f4f4f4;
 }
 
+.filters-button-container {
+    margin-top: 1em;
+}
+
 .filters {
     margin-bottom: 1em;
+    display: flex;
+    flex-wrap: wrap;
 }
 
 .filter {
     margin-right: 1em;
+    margin-bottom: 0.5em;
+}
+
+.filter-buttons {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
 }
 
 .pagination {
     margin-top: 1em;
+}
+
+button {
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+/* Modal Styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    width: 80%;
+    max-width: 600px;
+    max-height: 80%;
+    overflow-y: auto;
+}
+
+.modal h2 {
+    margin-top: 0;
+}
+
+.modal .filters {
+    display: flex;
+    flex-direction: column;
+}
+
+.modal .filter {
+    margin-bottom: 1em;
+}
+
+.modal .filter-buttons {
+    justify-content: flex-end;
 }
 </style>
