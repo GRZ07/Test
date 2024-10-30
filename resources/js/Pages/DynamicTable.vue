@@ -746,6 +746,10 @@ export default {
             tempFilters.value = {};
             tempFilterValues.value = {};
             filters.value = {};
+            sort.value = {
+                column: null,
+                direction: "asc",
+            }
             filterValues.value = {};
             relationshipDetails.value = {}; // Clear relationship details
             relatedToParams.value = null; // Reset relatedToParams
