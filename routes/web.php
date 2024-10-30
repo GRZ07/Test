@@ -26,9 +26,6 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::get('/users-api', [UserController::class, 'index']);
-    Route::get('/users', function () {
-        return Inertia::render('UserList');
-    });
     //make route for the index post
     Route::get('/posts', [PostController::class,'index']);
     Route::get('/table-names', [DynamicTableController::class, 'getAllTableNames']);
