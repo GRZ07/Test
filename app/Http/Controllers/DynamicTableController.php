@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Services\DynamicTableService;
+use App\Http\Requests\GetTableDataRequest;
 
 class DynamicTableController extends Controller
 {
@@ -29,10 +30,10 @@ class DynamicTableController extends Controller
     /**
      * Retrieve table data with dynamic filtering, sorting, and pagination.
      *
-     * @param Request $request
+     * @param GetTableDataRequest $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function getTableData(Request $request)
+    public function getTableData(GetTableDataRequest $request)
     {
         try {
             $tableData = $this->dynamicTableService->getTableData($request);

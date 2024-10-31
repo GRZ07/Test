@@ -1,9 +1,95 @@
+<template>
+    <div class="p-6 bg-gray-100 min-h-screen">
+        <h1 class="text-3xl font-bold mb-6 text-center text-gray-800">
+            Dynamic Table Viewer
+        </h1>
+
+        <!-- Table Selector -->
+        <TableSelector
+            :tableList="tableList"
+            v-model:selectedTable="selectedTable"
+        />
+
+        <!-- Loading and Error Indicators -->
+        <LoadingIndicator
+            :isLoading="isLoading"
+            :isFetching="isFetching"
+            :isError="isError"
+            :errorMessage="error"
+        />
+
+        <!-- Search Input -->
+        <SearchInput
+            v-if="data && data.data && !isError"
+            v-model:searchQuery="searchQuery"
+        />
+
+        <!-- Filters Button -->
+        <FiltersButton
+            v-if="data && data.data && !isError"
+            @openFilters="showFilters = true"
+        />
+
+        <!-- Filters Modal -->
+        <FiltersModal
+            v-if="showFilters"
+            :columns="data.columns"
+            :columnTypes="data.columnTypes"
+            :initialFilters="filters"
+            :initialFilterValues="filterValues"
+            @applyFilters="applyFilters"
+            @resetFilters="resetFilters"
+            @closeFilters="closeFilters"
+        />
+
+        <!-- Dynamic Table -->
+        <DynamicTable
+            v-if="data && data.data && data.columns && !isError"
+            :data="data"
+            :isError="isError"
+            :sort="sort"
+            @toggleSort="toggleSort"
+            @relationship-click="handleRelationshipClick"
+        />
+
+        <!-- Pagination Controls -->
+        <PaginationControls
+            v-if="data && data.data && !isError"
+            :data="data"
+            :isError="isError"
+            :currentPage="currentPage"
+            @go-to-page="goToPage"
+        />
+    </div>
+</template>
+
+<script>
 import { useQuery } from "@tanstack/vue-query";
 import pluralize from "pluralize";
 import { ref, onMounted, watch } from "vue";
 import { debounce } from "lodash";
 
+
+// Import child components
+import TableSelector from "./components/TableSelector.vue";
+import LoadingIndicator from "./components/LoadingIndicator.vue";
+import SearchInput from "./components/SearchInput.vue";
+import FiltersButton from "./components/FiltersButton.vue";
+import FiltersModal from "./components/FiltersModal.vue";
+import DynamicTable from "./components/DynamicTable.vue";
+import PaginationControls from "./components/PaginationControls.vue";
+
 export default {
+    name: "DynamicTableViewer",
+    components: {
+        TableSelector,
+        LoadingIndicator,
+        SearchInput,
+        FiltersButton,
+        FiltersModal,
+        DynamicTable,
+        PaginationControls,
+    },
     setup() {
         const selectedTable = ref("users");
         const currentPage = ref(1);
@@ -16,14 +102,12 @@ export default {
         const filterValues = ref({});
         const columnTypes = ref({});
         const searchQuery = ref("");
-
-        // Temporary filters for the filter form
-        const tempFilters = ref({});
-        const tempFilterValues = ref({});
+        const tempFilters =  ref({});
+        const tempFilterValues =  ref({});
 
         // Relationship details
         const relationshipDetails = ref({});
-        const relatedToParams = ref(null); // Add this line
+        const relatedToParams = ref(null);
 
         // Modal visibility
         const showFilters = ref(false);
@@ -78,16 +162,22 @@ export default {
 
             // Build filter query with type and value
             const filterQuery = Object.entries(filters)
-                .filter(
-                    ([key, type]) =>
-                        type &&
-                        filterValues.value[key] !== "" &&
-                        filterValues.value[key] !== null &&
-                        ((type === "between" &&
-                            filterValues.value[key].start &&
-                            filterValues.value[key].end) ||
-                            type !== "between")
-                )
+                .filter(([key, type]) => {
+                    if (!type) return false;
+                    const value = filterValues.value[key];
+                    if (value === "" || value === null || value === undefined)
+                        return false;
+                    if (type === "between") {
+                        const val = filterValues.value[key];
+                        return (
+                            val.start !== "" &&
+                            val.start !== null &&
+                            val.end !== "" &&
+                            val.end !== null
+                        );
+                    }
+                    return true;
+                })
                 .map(([key, type]) => {
                     if (
                         type === "between" &&
@@ -175,74 +265,58 @@ export default {
 
         const isCountColumn = (column) => column.includes("_count"); // Adjust as per your column naming convention
 
+        const handleRelationshipClick = (item, column) => {
+            onRelationshipClick(item, column, tableList);
+        };
+
         const onRelationshipClick = async (item, column, tableList) => {
-            // This function replaces 'onCountColumnClick' and is related to relationships
-            filters.value = {};
-            filterValues.value = {};
-            columnTypes.value = {};
+            console.log("onRelationshipClick called with:", {
+                item,
+                column,
+                tableList: tableList.value,
+            });
 
-            // Determine the relationship type from relationshipDetails
-
-            // Extract the base name by removing '_count'
-            const relatedTableBase = column.replace("_count", "");
-
-            let relatedTable = pluralize(relatedTableBase);
-            let previousTable = selectedTable.value.slice(0, -1); // Assuming plural to singular
-
-            // Get the list of table names
-            const tableNames = Object.values(tableList);
-
-            // Find the closest matching table name
-            const findClosestTableName = (baseName, tableNames) => {
-                let closestMatch = "";
-                let highestScore = 0;
-
-                for (const table of tableNames) {
-                    const score = getSimilarityScore(baseName, table);
-                    if (score > highestScore) {
-                        highestScore = score;
-                        closestMatch = table;
-                    }
-                }
-                return closestMatch;
-            };
-
-            const getSimilarityScore = (a, b) => {
-                const minLength = Math.min(a.length, b.length);
-                const matches = [...a].reduce((count, char, index) => {
-                    return count + (b[index] === char ? 1 : 0);
-                }, 0);
-                const score = matches / minLength;
-                return score;
-            };
-
-            // Find the related table based on the clicked column
-            relatedTable = findClosestTableName(relatedTableBase, tableNames);
-
-            if (!relatedTable) {
+            // Validate tableList.value
+            if (!Array.isArray(tableList.value)) {
+                console.error(
+                    "tableList.value is not an array:",
+                    tableList.value
+                );
                 return;
             }
 
-            selectedTable.value = relatedTable;
+            if (tableList.value.length === 0) {
+                console.warn("tableList.value is an empty array.");
+                return;
+            }
+
+            // Extract the base name by removing '_count'
+            const relatedTableBase = column.replace("_count", "");
+            const relatedTable = pluralize(relatedTableBase);
+            const previousTable = selectedTable.value.slice(0, -1); // Assuming plural to singular
+
+            // Find the closest matching table name
+            const finalRelatedTable = findClosestTableName(
+                relatedTableBase,
+                tableList.value
+            );
+
+            if (!finalRelatedTable) {
+                console.warn(
+                    `No related table found for base name: ${relatedTableBase}`
+                );
+                return;
+            }
+
+            selectedTable.value = finalRelatedTable;
 
             // Trigger a refetch to get fresh data
             await refetch();
 
             // Dynamically determine the foreign key based on the related table
-            const foreignKeyField = `${previousTable}_id`; // Ensures the foreign key is named as "{relatedTableBase}_id" with singular noun
+            const foreignKeyField = `${previousTable}_id`; // e.g., 'user_id'
 
             let filterField, columnToApplyFilters;
-
-            let thisTable = relatedTable.slice(0, -1) + "_id";
-
-            console.log(
-                "out thisColumn",
-                columnToApplyFilters,
-                "foreignKeyField",
-                foreignKeyField,
-                "thisTable",
-                thisTable
-            );
 
             // Handle one-to-one and one-to-many relationships
             const isOneTable = data.value?.columns.includes(foreignKeyField);
@@ -250,28 +324,13 @@ export default {
             if (isOneTable) {
                 filterField = "id"; // Filter by 'id' of the related table
                 columnToApplyFilters = foreignKeyField; // Apply filters to the foreign key
-                console.log(
-                    "1:1 thisColumn",
-                    columnToApplyFilters,
-                    "foreignKeyField",
-                    foreignKeyField
-                );
                 filterValues.value = {
-                    [columnToApplyFilters]: item.id.toString(), // Pass the ID from the many table
+                    [columnToApplyFilters]: item.id.toString(), // Pass the ID from the original table
                 };
             } else {
                 filterField = foreignKeyField;
                 columnToApplyFilters = "id";
-                console.log(
-                    "else thisColumn",
-                    columnToApplyFilters,
-                    "foreignKeyField",
-                    foreignKeyField,
-                    "thisTable",
-                    thisTable
-                );
-                // Ensure that item[thisTable] exists
-                const relatedId = item[thisTable];
+                const relatedId = item[foreignKeyField];
                 filterValues.value = {
                     [columnToApplyFilters]: relatedId
                         ? relatedId.toString()
@@ -286,6 +345,29 @@ export default {
             // Reset to the first page after applying a new filter
             currentPage.value = 1;
             await refetch();
+        };
+
+        const findClosestTableName = (baseName, tableNames) => {
+            let closestMatch = "";
+            let highestScore = 0;
+
+            for (const table of tableNames) {
+                const score = getSimilarityScore(baseName, table);
+                if (score > highestScore) {
+                    highestScore = score;
+                    closestMatch = table;
+                }
+            }
+            return closestMatch;
+        };
+
+        const getSimilarityScore = (a, b) => {
+            const minLength = Math.min(a.length, b.length);
+            const matches = [...a].reduce((count, char, index) => {
+                return count + (b[index] === char ? 1 : 0);
+            }, 0);
+            const score = matches / minLength;
+            return score;
         };
 
         watch(data, (newData) => {
@@ -320,26 +402,6 @@ export default {
             return columnTypes.value[column] === "date"
                 ? "Select date"
                 : "Enter value...";
-        };
-
-        const onTableChange = async () => {
-            currentPage.value = 1; // Reset to the first page
-            filters.value = {}; // Reset filters
-            filterValues.value = {}; // Reset filter values
-            sort.value = {
-                column: null,
-                direction: "asc",
-            }; // Reset sorting
-            searchQuery.value = ""; // Clear search query
-            columnTypes.value = {}; // Clear column types so it gets recalculated
-            relationshipDetails.value = {}; // Clear relationship details
-            relatedToParams.value = null; // Reset relatedToParams
-
-            // Also reset temporary filters
-            tempFilters.value = {};
-            tempFilterValues.value = {};
-
-            await refetch(); // This will trigger the reactivity for data automatically
         };
 
         const toggleSort = async (column) => {
@@ -381,6 +443,28 @@ export default {
             // No refetch here; filters are applied when "Apply Filters" is clicked
         };
 
+        const onTableChange = async (newTable) => {
+    selectedTable.value = newTable;
+    currentPage.value = 1; // Reset to the first page
+    filters.value = {}; // Reset filters
+    filterValues.value = {}; // Reset filter values
+    sort.value = {
+        column: null,
+        direction: "asc",
+    }; // Reset sorting
+    searchQuery.value = ""; // Clear search query
+    columnTypes.value = {}; // Clear column types so it gets recalculated
+    relationshipDetails.value = {}; // Clear relationship details
+    relatedToParams.value = null; // Reset relatedToParams
+
+    // Also reset temporary filters
+    tempFilters.value = {};
+    tempFilterValues.value = {};
+
+    await refetch(); // Trigger the refetch to load the new table data
+};
+
+
         const onTempFilterInputChange = (column) => {
             // Ensure that tempFilterValues[column] is an object when 'between' is selected
             if (
@@ -396,10 +480,13 @@ export default {
             // No refetch here; filters are applied when "Apply Filters" is clicked
         };
 
-        const applyFilters = () => {
+        const applyFilters = ({
+            filters: newFilters,
+            filterValues: newFilterValues,
+        }) => {
             // Transfer temporary filters to actual filters
-            filters.value = { ...tempFilters.value };
-            filterValues.value = { ...tempFilterValues.value };
+            filters.value = { ...newFilters };
+            filterValues.value = { ...newFilterValues };
             currentPage.value = 1; // Reset to first page
             showFilters.value = false; // Close the modal
             refetch(); // Trigger a refetch with new filters
@@ -410,6 +497,10 @@ export default {
             tempFilters.value = {};
             tempFilterValues.value = {};
             filters.value = {};
+            sort.value = {
+                column: null,
+                direction: "asc",
+            };
             filterValues.value = {};
             relationshipDetails.value = {}; // Clear relationship details
             relatedToParams.value = null; // Reset relatedToParams
@@ -422,29 +513,7 @@ export default {
             showFilters.value = false;
         };
 
-        const handleRelationshipClick = (item, column, tableList) => {
-            let columnValue = column.replace("_count", "");
-            columnValue = pluralize(columnValue); // Ensure it's plural
-
-            // Correctly access relationshipDetails using .value
-            const relationshipType = relationshipDetails.value;
-            const relationship = relationshipType[columnValue];
-
-            if (relationship === "many-to-many") {
-                console.log("Many-to-many relationship handled differently");
-                // Implement your logic for many-to-many relationships here
-                handleManyToManyRelationship(item, column, tableList);
-            } else {
-                console.log("Single-to-many: ", relationship);
-                onRelationshipClick(item, column, tableList);
-            }
-        };
-
-        const handleManyToManyRelationship = async (
-            item,
-            column,
-            tableList
-        ) => {
+        const handleManyToManyRelationship = async (item, column) => {
             // Extract the base name by removing '_count'
             const relatedTableBase = column.replace("_count", "");
             const relatedTable = pluralize(relatedTableBase);
@@ -491,6 +560,8 @@ export default {
             sort,
             relatedToParams,
             relationshipDetails,
+            showFilters,
+            currentPage,
             onTableChange,
             toggleSort,
             goToPage,
@@ -499,13 +570,13 @@ export default {
             resetFilters,
             closeFilters,
             getFilterPlaceholder,
-            isCountColumn: isCountColumn,
-            onRelationshipClick,
-            showFilters,
-            onTempFilterChange,
-            onTempFilterInputChange,
             handleRelationshipClick,
             handleManyToManyRelationship,
         };
     },
 };
+</script>
+
+<style scoped>
+/* Tailwind CSS handles the styling */
+</style>

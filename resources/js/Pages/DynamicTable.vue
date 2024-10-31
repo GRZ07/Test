@@ -55,6 +55,17 @@
             >
                 Filters
             </button>
+            <button
+                v-if="
+                    Object.keys(tempFilters).length > 0 ||
+                    sort.column ||
+                    relatedToParams
+                "
+                @click="resetFilters"
+                class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 ml-4"
+            >
+                Reset Filters
+            </button>
         </div>
 
         <!-- Filters Modal -->
@@ -160,6 +171,17 @@
                         />
 
                         <!-- Input for date and number 'between' filters -->
+                        <input
+                            v-if="
+                                tempFilters[column] &&
+                                (tempFilters[column] === 'after' ||
+                                    tempFilters[column] === 'before')
+                            "
+                            type="date"
+                            v-model="tempFilterValues[column]"
+                            placeholder="Enter date..."
+                            class="mt-2 p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        />
                         <div
                             v-if="tempFilters[column] === 'between'"
                             class="mt-2 flex space-x-2"
@@ -749,7 +771,7 @@ export default {
             sort.value = {
                 column: null,
                 direction: "asc",
-            }
+            };
             filterValues.value = {};
             relationshipDetails.value = {}; // Clear relationship details
             relatedToParams.value = null; // Reset relatedToParams

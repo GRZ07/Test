@@ -2,9 +2,14 @@
 
 namespace App\Providers;
 
-use App\Services\DynamicTableService;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
+use App\Services\DynamicTable\ModelMapper;
+use App\Services\DynamicTable\TableStructureAnalyzer;
+use App\Services\DynamicTable\RelationshipHandler;
+use App\Services\DynamicTable\QueryBuilderService;
+use App\Services\DynamicTableService;
+
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -14,7 +19,12 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(DynamicTableService::class, function ($app) {
-            return new DynamicTableService();
+            return new DynamicTableService(
+                $app->make(ModelMapper::class),
+                $app->make(TableStructureAnalyzer::class),
+                $app->make(RelationshipHandler::class),
+                $app->make(QueryBuilderService::class)
+            );
         });
     }
 
