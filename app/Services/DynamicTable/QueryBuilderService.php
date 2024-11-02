@@ -9,6 +9,13 @@ use Illuminate\Support\Str;
 
 class QueryBuilderService
 {
+    protected $tableStructureAnalyzer;
+
+    public function __construct(TableStructureAnalyzer $tableStructureAnalyzer)
+    {
+        $this->tableStructureAnalyzer = $tableStructureAnalyzer;
+    }
+
     /**
      * Build the initial query with allowed sorts and eager loading.
      *
@@ -19,7 +26,22 @@ class QueryBuilderService
      */
     public function buildQuery(string $modelClass, array $columns, array $relationships): QueryBuilder
     {
+        // Fetch predefined excluded columns
+        $excludedColumns = $this->tableStructureAnalyzer->getExcludedColumns();
+
+        $allColumns = $columns;
+
+        // Add any column that ends with "_count" to the excluded columns
+        foreach ($allColumns as $column) {
+            if (Str::endsWith($column, '_count')) {
+                $excludedColumns[] = $column;
+            }
+        }
+        // Exclude specified columns from the selection
+        $columnsToSelect = array_values(array_diff($allColumns, $excludedColumns));
+
         $query = QueryBuilder::for($modelClass)
+            ->select($columnsToSelect)
             ->allowedSorts($columns);
 
         if (!empty($relationships)) {

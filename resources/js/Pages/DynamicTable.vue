@@ -253,7 +253,7 @@
                             @click="toggleSort(value)"
                             class="px-4 py-2 cursor-pointer select-none"
                         >
-                            <div class="flex items-center justify-between">
+                            <div class=" flex justify-center">
                                 <span>{{ value }}</span>
                                 <span v-if="sort.column === value">
                                     <svg
@@ -293,7 +293,7 @@
                     <tr
                         v-for="(item, index) in data.data.data"
                         :key="index"
-                        class="hover:bg-gray-50"
+                        class="hover:bg-gray-50 px-4 py-2 border-t text-center"
                     >
                         <td
                             v-for="(value, column) in item"
@@ -309,10 +309,13 @@
                                         tableList
                                     )
                                 "
-                                class="text-blue-600 hover:underline focus:outline-none"
+                                class=" text-blue-600 hover:underline focus:outline-none"
                             >
                                 {{ value }}
                             </button>
+                            <span v-else-if="columnTypes[column] === 'date'">
+                                {{ formatDate(value) }}
+                            </span>
                             <span v-else>
                                 {{ value }}
                             </span>
@@ -534,10 +537,6 @@ export default {
         const isCountColumn = (column) => column.includes("_count"); // Adjust as per your column naming convention
 
         const onRelationshipClick = async (item, column, tableList) => {
-            // This function replaces 'onCountColumnClick' and is related to relationships
-            filters.value = {};
-            filterValues.value = {};
-            columnTypes.value = {};
 
             // Determine the relationship type from relationshipDetails
 
@@ -792,6 +791,14 @@ export default {
             const relationshipType = relationshipDetails.value;
             const relationship = relationshipType[columnValue];
 
+            filters.value = {};
+            filterValues.value = {};
+            columnTypes.value = {};
+            sort.value = {
+                column: null,
+                direction: "asc",
+            }
+
             if (relationship === "many-to-many") {
                 console.log("Many-to-many relationship handled differently");
                 // Implement your logic for many-to-many relationships here
@@ -838,6 +845,14 @@ export default {
             await refetch();
         };
 
+        const formatDate = (date) => {
+            if (!date) return ""; // Return empty string if no date
+            const options = { year: "numeric", month: "short", day: "numeric" }; // Format options
+            return new Intl.DateTimeFormat("en-US", options).format(
+                new Date(date)
+            );
+        };
+
         return {
             selectedTable,
             tableList,
@@ -868,12 +883,9 @@ export default {
             onTempFilterInputChange,
             handleRelationshipClick,
             handleManyToManyRelationship,
-            currentPage, // Added to display current page
+            currentPage,
+            formatDate,
         };
     },
 };
 </script>
-
-<style scoped>
-/* You can remove the existing styles as Tailwind handles the styling */
-</style>

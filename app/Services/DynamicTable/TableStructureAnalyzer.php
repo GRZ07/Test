@@ -15,9 +15,19 @@ class TableStructureAnalyzer
     public function getTableColumns(string $table): array
     {
         $columns = Schema::getColumnListing($table);
-        $excludedColumns = ['remember_token', 'password'];
+        $excludedColumns = $this->getExcludedColumns();
 
         return array_values(array_diff($columns, $excludedColumns));
+    }
+
+    /**
+     * Define columns to exclude from query results.
+     *
+     * @return array
+     */
+    public function getExcludedColumns(): array
+    {
+        return ['remember_token', 'password', 'updated_at', 'email_verified_at'];
     }
 
     /**
